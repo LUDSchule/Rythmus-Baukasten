@@ -198,6 +198,179 @@
             </div>
         </div>
     </div>
+<script>
+    // --- 1. Sound-Engine (Synthetische Platzhalter-Sounds) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const time = audioCtx.currentTime;
+
+        if (type === 'metronome') {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 800; // Hoher Klick
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.5, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+            osc.start(time);
+            osc.stop(time + 0.1);
+        } else if (type === 'clap') {
+            // Rauschen für "Klatschen"
+            const bufferSize = audioCtx.sampleRate * 0.2; 
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            const gain = audioCtx.createGain();
+            noise.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0.8, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+            noise.start(time);
+        } else if (type === 'stomp') {
+            // Tiefer "Wumms" für Stampfen
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(150, time);
+            osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.3);
+            gain.gain.setValueAtTime(1, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+            osc.start(time);
+            osc.stop(time + 0.3);
+        }
+    }
+
+    // --- 2. Sequenzer Logik ---
+    let isPlaying = false;
+    let currentStep = 0;
+    let nextNoteTime = 0;
+    let timerID;
+
+    const bpmSlider = document.getElementById('bpmSlider');
+    const bpmValue = document.getElementById('bpmValue');
+    const playBtn = document.getElementById('playBtn');
+    const dropzones = document.querySelectorAll('.dropzone');
+
+    // BPM Anzeige updaten
+    bpmSlider.addEventListener('input', (e) => {
+        bpmValue.textContent = e.target.value;
+    });
+
+    function nextNote() {
+        const bpm = parseInt(bpmSlider.value);
+        // Da wir Achtelnoten (1 und 2 und...) haben, ist ein Step ein halber Beat
+        const secondsPerBeat = 60.0 / bpm;
+        const secondsPerStep = secondsPerBeat / 2;
+        nextNoteTime += secondsPerStep;
+        currentStep = (currentStep + 1) % 8; // Zählt von 0 bis 7 und fängt wieder bei 0 an
+    }
+
+    function scheduleNote() {
+        while (nextNoteTime < audioCtx.currentTime + 0.1) {
+            playStep(currentStep, nextNoteTime);
+            nextNote();
+        }
+        timerID = requestAnimationFrame(scheduleNote);
+    }
+
+    function playStep(stepIndex, time) {
+        // 1. Optische Hervorhebung
+        // Nutze setTimeout, damit die visuelle Änderung mit dem Audio-Timing synchronisiert ist
+        setTimeout(() => {
+            dropzones.forEach(dz => dz.classList.remove('active'));
+            const currentZone = document.querySelector(`.dropzone[data-step="${stepIndex}"]`);
+            if(currentZone) currentZone.classList.add('active');
+        }, (time - audioCtx.currentTime) * 1000);
+
+        // 2. Metronom abspielen
+        if (document.getElementById('metronomeToggle').checked) {
+            // Betonte Zählzeit (1, 2, 3, 4) etwas lauter/anders als die "und" (optional, hier einfach immer Klick)
+            playSound('metronome');
+        }
+
+        // 3. Karte im Feld checken und Sound abspielen
+        const currentZone = document.querySelector(`.dropzone[data-step="${stepIndex}"]`);
+        if (currentZone && currentZone.hasChildNodes()) {
+            const card = currentZone.firstChild;
+            const cardType = card.getAttribute('data-type');
+            
+            if (cardType === 'clap' && document.getElementById('soundClapToggle').checked) {
+                playSound('clap');
+            } else if (cardType === 'stomp' && document.getElementById('soundStompToggle').checked) {
+                playSound('stomp');
+            }
+        }
+    }
+
+    playBtn.addEventListener('click', () => {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            playBtn.textContent = '⏸ Pause';
+            playBtn.style.backgroundColor = '#f44336'; // Rot für Stop/Pause
+            currentStep = 0;
+            nextNoteTime = audioCtx.currentTime + 0.1;
+            scheduleNote();
+        } else {
+            playBtn.textContent = '▶ Play';
+            playBtn.style.backgroundColor = '#4CAF50'; // Wieder grün
+            cancelAnimationFrame(timerID);
+            dropzones.forEach(dz => dz.classList.remove('active')); // Alle Highlights entfernen
+        }
+    });
+
+    // --- 3. Drag & Drop Logik (Maus) ---
+    const cards = document.querySelectorAll('.card');
+
+    cards.forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', card.getAttribute('data-type'));
+        });
+    });
+
+    dropzones.forEach(zone => {
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault(); // Erlaubt das Ablegen
+            zone.style.borderColor = '#4CAF50'; // Zeigt an, dass man hier droppen kann
+        });
+
+        zone.addEventListener('dragleave', (e) => {
+            zone.style.borderColor = '#ccc';
+        });
+
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.style.borderColor = '#ccc';
+            
+            const cardType = e.dataTransfer.getData('text/plain');
+            if (!cardType) return;
+
+            // Klon erstellen
+            const newCard = document.createElement('div');
+            newCard.classList.add('card');
+            newCard.setAttribute('data-type', cardType);
+            
+            // Textinhalt (später Bilder) übernehmen
+            if(cardType === 'clap') newCard.innerHTML = '👏';
+            if(cardType === 'stomp') newCard.innerHTML = '🦶';
+
+            // Klick-Event zum Löschen hinzufügen (motorisch einfacher als Drag&Drop in Mülleimer)
+            newCard.addEventListener('click', () => {
+                zone.innerHTML = '';
+            });
+
+            // Vorherigen Inhalt leeren und neue Karte einfügen
+            zone.innerHTML = '';
+            zone.appendChild(newCard);
+        });
+    });
+</script>
 </body>
 </html>
