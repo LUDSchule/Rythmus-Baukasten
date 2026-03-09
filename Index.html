@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rhythmus-Baukasten</title>
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --slot-bg: #ffffff;
+            --highlight-color: #ff0000;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* Verhindert das versehentliche Markieren von Text beim Touch-Ziehen */
+            user-select: none; 
+        }
+
+        /* --- Bedienfeld (Controls) --- */
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            font-size: 1.5rem;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #2E7D32;
+        }
+        
+        button:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            height: 20px;
+        }
+
+        input[type="checkbox"] {
+            width: 25px;
+            height: 25px;
+        }
+
+        /* --- Rhythmus-Felder (Sequenzer) --- */
+        .grid-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 50px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .label {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .dropzone {
+            width: 120px;
+            height: 120px;
+            background-color: var(--slot-bg);
+            border: 4px dashed #ccc;
+            border-radius: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.1s;
+        }
+
+        /* Diese Klasse fügen wir später per JS hinzu, wenn das Feld "an der Reihe" ist */
+        .dropzone.active {
+            border-color: var(--highlight-color);
+            background-color: #ffe6e6;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+            transform: scale(1.05);
+        }
+
+        /* --- Karten-Stapel (Metacom) --- */
+        .stacks-container {
+            display: flex;
+            gap: 50px;
+        }
+
+        .stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .card {
+            width: 100px;
+            height: 100px;
+            background-color: white;
+            border: 3px solid #666;
+            border-radius: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            /* Touch-Action ist wichtig für flüssiges Ziehen auf Tablets */
+            touch-action: none; 
+        }
+
+        .card img {
+            max-width: 80%;
+            max-height: 80%;
+            pointer-events: none; /* Verhindert Bugs beim Ziehen des Bildes */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button id="playBtn">▶ Play</button>
+        
+        <div class="control-group">
+            <label for="bpmSlider">Tempo: <span id="bpmValue">90</span> BPM</label>
+            <input type="range" id="bpmSlider" min="40" max="160" value="90">
+        </div>
+
+        <div class="control-group">
+            <label><input type="checkbox" id="metronomeToggle" checked> Metronom (Klick)</label>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="soundClapToggle" checked> Sound Klatschen</label>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="soundStompToggle" checked> Sound Stampfen</label>
+        </div>
+    </div>
+
+    <div class="grid-container" id="sequencerGrid">
+        <div class="column"><div class="label">1</div><div class="dropzone" data-step="0"></div></div>
+        <div class="column"><div class="label">+</div><div class="dropzone" data-step="1"></div></div>
+        <div class="column"><div class="label">2</div><div class="dropzone" data-step="2"></div></div>
+        <div class="column"><div class="label">+</div><div class="dropzone" data-step="3"></div></div>
+        <div class="column"><div class="label">3</div><div class="dropzone" data-step="4"></div></div>
+        <div class="column"><div class="label">+</div><div class="dropzone" data-step="5"></div></div>
+        <div class="column"><div class="label">4</div><div class="dropzone" data-step="6"></div></div>
+        <div class="column"><div class="label">+</div><div class="dropzone" data-step="7"></div></div>
+    </div>
+
+    <div class="stacks-container">
+        <div class="stack">
+            <span>Klatschen</span>
+            <div class="card" draggable="true" data-type="clap">
+                👏
+            </div>
+        </div>
+        <div class="stack">
+            <span>Stampfen</span>
+            <div class="card" draggable="true" data-type="stomp">
+                🦶
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
